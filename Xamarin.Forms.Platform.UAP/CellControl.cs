@@ -322,13 +322,13 @@ namespace Xamarin.Forms.Platform.UWP
 				object bindingContext = newContext;
 
 				bool sameTemplate = false;
-				if (template is DataTemplateSelector)
+				if (template is DataTemplateSelector dataTemplateSelector)
 				{
-					template = ((DataTemplateSelector)template).SelectTemplate(bindingContext, lv);
+					template = dataTemplateSelector.SelectTemplate(bindingContext, lv);
 
 					if (oldCell?.BindingContext != null)
 					{
-						DataTemplate oldTemplate = ((DataTemplateSelector)template).SelectTemplate(oldCell?.BindingContext, lv);
+						DataTemplate oldTemplate = dataTemplateSelector.SelectTemplate(oldCell?.BindingContext, lv);
 						sameTemplate = oldTemplate == template;
 					}
 				}
