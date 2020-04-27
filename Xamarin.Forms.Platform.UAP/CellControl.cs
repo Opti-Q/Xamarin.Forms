@@ -310,16 +310,44 @@ namespace Xamarin.Forms.Platform.UWP
 			ListView lv = _listView.Value;
 			if (lv != null)
 			{
+				bool? wasGroupHeader = null;
+                var oldCell = Cell;
+				if (oldCell != null)
+				{
+					wasGroupHeader = oldCell.GetIsGroupHeader<ItemsView<Cell>, Cell>();
+				}
+				
 				bool isGroupHeader = IsGroupHeader;
 				DataTemplate template = isGroupHeader ? lv.GroupHeaderTemplate : lv.ItemTemplate;
 				object bindingContext = newContext;
 
+				bool sameTemplate = false;
 				if (template is DataTemplateSelector)
 				{
 					template = ((DataTemplateSelector)template).SelectTemplate(bindingContext, lv);
+
+					if (oldCell?.BindingContext != null)
+					{
+						DataTemplate oldTemplate = ((DataTemplateSelector)template).SelectTemplate(oldCell?.BindingContext, lv);
+						sameTemplate = oldTemplate == template;
+					}
+				}
+				else if(wasGroupHeader.HasValue)
+				{
+					sameTemplate = wasGroupHeader == isGroupHeader;
 				}
 
-				if (template != null)
+				// reuse cell
+				var canReuseCell = Cell != null && sameTemplate;
+				
+				if (canReuseCell)
+				{
+					cell = Cell;
+
+					if (isGroupHeader)
+						bindingContext = lv.GetDisplayTextFromGroup(bindingContext);
+				}
+				else if (template != null)
 				{
 					cell = template.CreateContent() as Cell;
 				}
@@ -343,7 +371,8 @@ namespace Xamarin.Forms.Platform.UWP
 				cell.SetIsGroupHeader<ItemsView<Cell>, Cell>(isGroupHeader);
 			}
 
-			Cell = cell;
+			if(Cell != cell)
+				Cell = cell;
 		}
 
 		void SetSource(Cell oldCell, Cell newCell)
