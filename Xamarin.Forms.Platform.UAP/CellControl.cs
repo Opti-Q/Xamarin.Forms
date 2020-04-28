@@ -343,9 +343,6 @@ namespace Xamarin.Forms.Platform.UWP
 				if (canReuseCell)
 				{
 					cell = Cell;
-
-					if (isGroupHeader)
-						bindingContext = lv.GetDisplayTextFromGroup(bindingContext);
 				}
 				else if (template != null)
 				{
