@@ -37,12 +37,29 @@ namespace Xamarin.Forms.Platform.UWP
 
 			DataContextChanged += OnDataContextChanged;
 
-			Unloaded += (sender, args) =>
-			{
-				Cell?.SendDisappearing();
-			};
+			Loaded += OnLoaded;
+			Unloaded += OnUnloaded;
 
 			_propertyChangedHandler = OnCellPropertyChanged;
+		}
+
+		void OnLoaded(object sender, RoutedEventArgs e)
+		{
+			if (Cell == null)
+				return;
+
+			// make sure we do not subscribe twice
+			Cell.PropertyChanged -= _propertyChangedHandler;
+			Cell.PropertyChanged += _propertyChangedHandler;
+		}
+
+		void OnUnloaded(object sender, RoutedEventArgs e)
+		{
+			if (Cell == null)
+				return;
+
+			Cell.SendDisappearing();
+			Cell.PropertyChanged -= _propertyChangedHandler;
 		}
 
 		public Cell Cell
@@ -388,6 +405,8 @@ namespace Xamarin.Forms.Platform.UWP
 				UpdateFlowDirection(newCell);
 				SetupContextMenu();
 
+				// make sure we do not subscribe twice (OnLoaded!)
+				newCell.PropertyChanged -= _propertyChangedHandler;
 				newCell.PropertyChanged += _propertyChangedHandler;
 			}
 		}
