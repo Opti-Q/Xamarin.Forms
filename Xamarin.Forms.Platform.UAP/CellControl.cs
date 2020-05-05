@@ -387,6 +387,11 @@ namespace Xamarin.Forms.Platform.UWP
 
 			if(Cell != cell)
 				Cell = cell;
+			else if(Cell != null)
+			{
+				Cell.SendDisappearing();
+				Cell.SendAppearing();
+			}
 		}
 
 		void SetSource(Cell oldCell, Cell newCell)
