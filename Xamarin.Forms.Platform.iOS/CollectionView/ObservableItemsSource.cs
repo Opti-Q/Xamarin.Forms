@@ -2,7 +2,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
-using System.Linq;
 using Foundation;
 using UIKit;
 
@@ -112,11 +111,11 @@ namespace Xamarin.Forms.Platform.iOS
 			}
 		}
 
-		async void CollectionChanged(object sender, NotifyCollectionChangedEventArgs args)
+		void CollectionChanged(object sender, NotifyCollectionChangedEventArgs args)
 		{
 			if (Device.IsInvokeRequired)
 			{
-				await Device.InvokeOnMainThreadAsync(() => CollectionChanged(args));
+				Device.InvokeOnMainThreadAsync(() => CollectionChanged(args));
 			}
 			else
 			{
@@ -126,11 +125,14 @@ namespace Xamarin.Forms.Platform.iOS
 
 		void CollectionChanged(NotifyCollectionChangedEventArgs args)
 		{
-			if (NotLoadedYet())
+			if (_collectionView.NumberOfSections() == 0)
 			{
-				Reload();
+				// The CollectionView isn't fully initialized yet
 				return;
 			}
+
+			// Force UICollectionView to get the internal accounting straight 
+			_collectionView.NumberOfItemsInSection(_section);
 
 			switch (args.Action)
 			{
@@ -156,17 +158,10 @@ namespace Xamarin.Forms.Platform.iOS
 
 		void Reload()
 		{
-			// update the internal items source
-			_internalItemsSource.Clear();
-			_internalItemsSource.AddRange(_originalItemsSource.Cast<object>());
 			Count = ItemsCount();
-
-			// update the collection view without using animation to avoid concurrency
-			// code source: https://stackoverflow.com/a/64146094/13005218
-			UIView.PerformWithoutAnimation(() =>
-			{
-				_collectionView.ReloadData();
-			});
+			_collectionView.ReloadData();
+			_collectionView.CollectionViewLayout.InvalidateLayout();
+			_collectionView.LayoutIfNeeded();
 		}
 
 		NSIndexPath[] CreateIndexesFrom(int startIndex, int count)
@@ -183,25 +178,11 @@ namespace Xamarin.Forms.Platform.iOS
 
 		void Add(NotifyCollectionChangedEventArgs args)
 		{
-			// UICollectionView doesn't like when we insert items into a completely empty un-grouped CV,
-			// and it doesn't like when we insert items into a grouped CV with no actual cells (just empty groups)
-			// In those circumstances, we just need to ask it to reload the data so it can get its internal
-			// accounting in order
-
-			if (!_grouped && _collectionView.NumberOfItemsInSection(_section) == 0 ||
-			    _collectionView.VisibleCells.Length == 0)
-			{
-				Reload();
-				return;
-			}
-
 			var count = args.NewItems.Count;
 			Count += count;
 			var startIndex = args.NewStartingIndex > -1 ? args.NewStartingIndex : IndexOf(args.NewItems[0]);
 
-			// update the internal items source
-			_internalItemsSource.InsertRange(args.NewStartingIndex, args.NewItems.Cast<object>());
-			// update the collection view
+			// Queue up the updates to the UICollectionView
 			_collectionView.InsertItems(CreateIndexesFrom(startIndex, count));
 		}
 
@@ -210,16 +191,17 @@ namespace Xamarin.Forms.Platform.iOS
 			var startIndex = args.OldStartingIndex;
 			if (startIndex < 0)
 			{
-				startIndex = _internalItemsSource.IndexOf(args.OldItems[0]);
+				// INCC implementation isn't giving us enough information to know where the removed items were in the
+				// collection. So the best we can do is a ReloadData()
+				Reload();
+				return;
 			}
 
 			// If we have a start index, we can be more clever about removing the item(s) (and get the nifty animations)
 			var count = args.OldItems.Count;
 			Count -= count;
 
-			// update the internal items source
-			_internalItemsSource.RemoveRange(args.OldStartingIndex, args.OldItems.Count);
-			// update the collection view
+			// Queue up the updates to the UICollectionView
 			_collectionView.DeleteItems(CreateIndexesFrom(startIndex, count));
 		}
 
@@ -275,13 +257,36 @@ namespace Xamarin.Forms.Platform.iOS
 
 		internal object ElementAt(int index) => _internalItemsSource[index];
 
-		internal int IndexOf(object item) => _internalItemsSource.IndexOf(item);
-
-		bool NotLoadedYet()
+		internal object ElementAt(int index)
 		{
-			// If the UICollectionView hasn't actually been loaded, then calling InsertItems or DeleteItems is 
-			// going to crash or get in an unusable state; instead, ReloadData should be used
-			return !_collectionViewController.IsViewLoaded || _collectionViewController.View?.Window is null;
+			if (_itemsSource is IList list)
+				return list[index];
+
+			int count = 0;
+			foreach (var item in _itemsSource)
+			{
+				if (count == index)
+					return item;
+				count++;
+			}
+
+			return -1;
+		}
+
+		internal int IndexOf(object item)
+		{
+			if (_itemsSource is IList list)
+				return list.IndexOf(item);
+
+			int count = 0;
+			foreach (var i in _itemsSource)
+			{
+				if (i == item)
+					return count;
+				count++;
+			}
+
+			return -1;
 		}
 	}
 }

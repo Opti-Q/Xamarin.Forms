@@ -729,7 +729,7 @@ Task("BuildForNuget")
 
         msbuildSettings.BinaryLogger = binaryLogger;
         binaryLogger.FileName = $"{artifactStagingDirectory}/win-{configuration}.binlog";
-        MSBuild("./Xamarin.Forms.sln", msbuildSettings);
+        MSBuild("./Xamarin.Forms.sln", msbuildSettings.WithRestore());
         
         // // This currently fails on CI will revisit later
         // if(isCIBuild)
@@ -801,12 +801,33 @@ Task("BuildForNuget")
 
         msbuildSettings = GetMSBuildSettings();
         msbuildSettings.BinaryLogger = binaryLogger;
-        binaryLogger.FileName = $"{artifactStagingDirectory}/win-{configuration}-csproj.binlog";
+        binaryLogger.FileName = $"{artifactStagingDirectory}/win-maps-{configuration}-csproj.binlog";
+        MSBuild("./Xamarin.Forms.Maps.UWP/Xamarin.Forms.Maps.UWP.csproj",
+                    msbuildSettings
+                        .WithProperty("UwpMinTargetFrameworks", "uap10.0.14393")
+                        .WithRestore());
+
+        msbuildSettings = GetMSBuildSettings();
+        msbuildSettings.BinaryLogger = binaryLogger;
+        binaryLogger.FileName = $"{artifactStagingDirectory}/win-16299-{configuration}-csproj.binlog";
         MSBuild("./Xamarin.Forms.Platform.UAP/Xamarin.Forms.Platform.UAP.csproj",
                     msbuildSettings
+                        .WithRestore()
                         .WithTarget("rebuild")
                         .WithProperty("DisableEmbeddedXbf", "false")
-                        .WithProperty("EnableTypeInfoReflection", "false"));
+                        .WithProperty("EnableTypeInfoReflection", "false")
+                        .WithProperty("UwpMinTargetFrameworks", "uap10.0.16299"));
+
+        msbuildSettings = GetMSBuildSettings();
+        msbuildSettings.BinaryLogger = binaryLogger;
+        binaryLogger.FileName = $"{artifactStagingDirectory}/win-14393-{configuration}-csproj.binlog";
+        MSBuild("./Xamarin.Forms.Platform.UAP/Xamarin.Forms.Platform.UAP.csproj",
+                    msbuildSettings
+                        .WithRestore()
+                        .WithTarget("rebuild")
+                        .WithProperty("DisableEmbeddedXbf", "false")
+                        .WithProperty("EnableTypeInfoReflection", "false")
+                        .WithProperty("UwpMinTargetFrameworks", "uap10.0.14393"));
 
         msbuildSettings = GetMSBuildSettings();
         msbuildSettings.BinaryLogger = binaryLogger;
@@ -823,6 +844,30 @@ Task("BuildForNuget")
                     msbuildSettings
                         .WithTarget("rebuild")
                         .WithProperty("USE2017", "true"));
+
+    }
+    catch(Exception)
+    {
+        if(IsRunningOnWindows())
+            throw;
+    }
+});
+
+Task("BuildPages")
+    .IsDependentOn("BuildTasks")
+    .Description("Build Xamarin.Forms.Pages")
+    .Does(() =>
+{
+    try
+    {
+        var msbuildSettings = GetMSBuildSettings();
+        var binaryLogger = new MSBuildBinaryLogSettings {
+            Enabled  = isCIBuild
+        };
+
+        msbuildSettings.BinaryLogger = binaryLogger;
+        binaryLogger.FileName = $"{artifactStagingDirectory}/win-pages-{configuration}.binlog";
+        MSBuild("./build/Xamarin.Forms.Pages.sln", msbuildSettings.WithRestore());
 
     }
     catch(Exception)
@@ -1084,9 +1129,15 @@ MSBuildSettings GetMSBuildSettings(PlatformTarget? platformTarget = PlatformTarg
         Configuration = buildConfiguration ?? configuration,
     };
 
+    buildSettings = buildSettings.WithProperty("ANDROID_RENDERERS", $"{ANDROID_RENDERERS}");
     if(!String.IsNullOrWhiteSpace(XamarinFormsVersion))
     {
         buildSettings = buildSettings.WithProperty("XamarinFormsVersion", XamarinFormsVersion);
+    }
+    
+    if(isCIBuild)
+    {
+        buildSettings = buildSettings.WithProperty("RestoreConfigFile", $"DevopsNuget.config");
     }
     
     buildSettings.ArgumentCustomization = args => args.Append($"/nowarn:VSX1000 {MSBuildArguments}");

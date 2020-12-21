@@ -2,7 +2,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
-using System.Linq;
 using Foundation;
 using UIKit;
 
@@ -14,7 +13,7 @@ namespace Xamarin.Forms.Platform.iOS
 		readonly UICollectionViewController _collectionViewController;
 		readonly IList _originalItemsSource;
 		bool _disposed;
-		readonly List<IItemsViewSource> _groups = new List<IItemsViewSource>();
+		List<ObservableItemsSource> _groups = new List<ObservableItemsSource>();
 
 		public ObservableGroupedSource(IEnumerable groupSource, UICollectionViewController collectionViewController)
 		{
@@ -116,11 +115,11 @@ namespace Xamarin.Forms.Platform.iOS
 			}
 		}
 
-		async void CollectionChanged(object sender, NotifyCollectionChangedEventArgs args)
+		void CollectionChanged(object sender, NotifyCollectionChangedEventArgs args)
 		{
 			if (Device.IsInvokeRequired)
 			{
-				await Device.InvokeOnMainThreadAsync(() => CollectionChanged(args));
+				Device.InvokeOnMainThreadAsync(() => CollectionChanged(args));
 			}
 			else
 			{
@@ -163,13 +162,7 @@ namespace Xamarin.Forms.Platform.iOS
 		{
 			ResetGroups();
 
-			// update the collection view without using animation to avoid concurrency
-			// code source: https://stackoverflow.com/a/64146094/13005218
-			UIView.PerformWithoutAnimation(() =>
-			{
-				// [!] Do not use BatchUpdate here, it will cause concurrency problems
-				_collectionView.ReloadData();
-			});
+			_collectionView.ReloadData();
 			_collectionView.CollectionViewLayout.InvalidateLayout();
 		}
 
@@ -202,8 +195,7 @@ namespace Xamarin.Forms.Platform.iOS
 			// is to reset all the group tracking to get it up-to-date
 			ResetGroups();
 
-			// apply the updates to the UICollectionView
-			// [!] Do not use BatchUpdate here, it will cause concurrency problems
+			// Queue up the updates to the UICollectionView
 			_collectionView.InsertSections(CreateIndexSetFrom(startIndex, count));
 		}
 
@@ -219,6 +211,12 @@ namespace Xamarin.Forms.Platform.iOS
 				return;
 			}
 
+			if (ReloadRequired())
+			{
+				Reload();
+				return;
+			}
+
 			// Removing a group will change the section index for all subsequent groups, so the easiest thing to do
 			// is to reset all the group tracking to get it up-to-date
 			ResetGroups();
@@ -226,8 +224,7 @@ namespace Xamarin.Forms.Platform.iOS
 			// Since we have a start index, we can be more clever about removing the item(s) (and get the nifty animations)
 			var count = args.OldItems.Count;
 
-			// apply the updates to the UICollectionView
-			// [!] Do not use BatchUpdate here, it will cause concurrency problems
+			// Queue up the updates to the UICollectionView
 			_collectionView.DeleteSections(CreateIndexSetFrom(startIndex, count));
 		}
 
@@ -273,6 +270,79 @@ namespace Xamarin.Forms.Platform.iOS
 
 			// [!] Do not use BatchUpdate here, it will cause concurrency problems
 			_collectionView.ReloadSections(CreateIndexSetFrom(start, end));
+		}
+
+		int GetGroupCount(int groupIndex)
+		{
+			switch (_groupSource[groupIndex])
+			{
+				case IList list:
+					return list.Count;
+				case IEnumerable enumerable:
+					var count = 0;
+					var enumerator = enumerable.GetEnumerator();
+					while (enumerator.MoveNext())
+					{
+						count += 1;
+					}
+					return count;
+			}
+
+			return 0;
+		}
+
+		object GetGroupItemAt(int groupIndex, int index)
+		{
+			switch (_groupSource[groupIndex])
+			{
+				case IList list:
+					return list[index];
+				case IEnumerable enumerable:
+					var count = -1;
+					var enumerator = enumerable.GetEnumerator();
+
+					do
+					{
+						enumerator.MoveNext();
+						count += 1;
+					}
+					while (count < index);
+
+					return enumerator.Current;
+			}
+
+			return null;
+		}
+
+		int IndexInGroup(object item, object group)
+		{
+			switch (group)
+			{
+				case IList list:
+					return list.IndexOf(item);
+				case IEnumerable enumerable:
+					var enumerator = enumerable.GetEnumerator();
+					var index = 0;
+					while (enumerator.MoveNext())
+					{
+						if (enumerator.Current == item)
+						{
+							return index;
+						}
+					}
+					return -1;
+			}
+
+			return -1;
+		}
+
+		bool ReloadRequired()
+		{
+			// If the UICollectionView has never been loaded, or doesn't yet have any sections, any insert/delete operations 
+			// are gonna crash hard. We'll need to reload the data instead.
+
+			return NotLoadedYet()
+				|| _collectionView.NumberOfSections() == 0;
 		}
 	}
 }
