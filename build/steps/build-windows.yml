@@ -1,5 +1,4 @@
 parameters:
-  slnPath : 'Xamarin.Forms.sln'
   msbuildExtraArguments : ''
   artifactsTargetFolder: '$(build.artifactstagingdirectory)'
   artifactsName: 'win_build'
@@ -8,7 +7,6 @@ parameters:
   includeAndroid: 'true'
   includeNonUwpAndNonAndroid: 'true'
   includePages: 'false'
-
 
 steps:
   - checkout: self
@@ -32,32 +30,31 @@ steps:
   #     version: $(DOTNET_VERSION)
   #     packageType: 'sdk'
 
-  - task: NuGetToolInstaller@1
-    displayName: 'Use NuGet $(NUGET_VERSION)'
-    condition: ne(variables['NUGET_VERSION'], '')
-    inputs:
-      versionSpec: $(NUGET_VERSION)
+  
+  - script: build.cmd -Target cg-uwp-build-tests  -ScriptArgs '--BUILD_CONFIGURATION="$(BuildConfiguration)"'
+    condition: and(eq(variables['BuildConfiguration'], 'Release'), ne('${{ parameters.includePages }}', true))
+    displayName: 'Build Tests and APPX'
 
-  - task: NuGetCommand@2
-    displayName: 'NuGet restore ${{ parameters.slnPath }}'
+  - task: CopyFiles@2
+    displayName: 'Copy Appx Packages'
+    condition: and(eq(variables['BuildConfiguration'], 'Release'), ne('${{ parameters.includePages }}', true))
     inputs:
-      restoreSolution: ${{ parameters.slnPath }}
-      feedsToUse: config
-      nugetConfigPath: 'DevopsNuget.config'
+      Contents: |
+        Xamarin.Forms.ControlGallery.WindowsUniversal/AppPackages/*/*
+        Xamarin.Forms.ControlGallery.WindowsUniversal/AppPackages/*/Add-AppDevPackage.resources/**
+        Xamarin.Forms.ControlGallery.WindowsUniversal/AppPackages/*/TelemetryDependencies/**
+        Xamarin.Forms.ControlGallery.WindowsUniversal/AppPackages/*/Dependencies/x86/**
+      TargetFolder: '$(build.artifactstagingdirectory)'
 
-  - script: build.cmd -Target BuildForNuget -ScriptArgs '-BUILD_CONFIGURATION="$(BuildConfiguration)"','-Build_ArtifactStagingDirectory="$(Build.ArtifactStagingDirectory)"'
+  - script: build.cmd -Target BuildForNuget -ScriptArgs '--BUILD_CONFIGURATION="$(BuildConfiguration)"','--Build_ArtifactStagingDirectory="$(Build.ArtifactStagingDirectory)"'
     name: winbuild
     displayName: 'Build Projects For Nuget'
     condition: ne(${{ parameters.includePages }}, 'true')
 
-  - task: MSBuild@1
-    displayName: 'Build solution ${{ parameters.slnPath }}'
+  - script: build.cmd -Target BuildPages -ScriptArgs '--BUILD_CONFIGURATION="$(BuildConfiguration)"','--Build_ArtifactStagingDirectory="$(Build.ArtifactStagingDirectory)"'
     name: winslnbuild
+    displayName: 'Build solution Xamarin.Forms.Pages.sln'
     condition: eq(${{ parameters.includePages }}, 'true')
-    inputs:
-      solution: ${{ parameters.slnPath }}
-      configuration: '$(BuildConfiguration)'
-      msbuildArguments: ${{ parameters.msbuildExtraArguments }} /bl:$(Build.ArtifactStagingDirectory)\win-$(BuildConfiguration).binlog
 
   - task: VSTest@2
     displayName: 'Unit Tests'
@@ -191,23 +188,6 @@ steps:
         **/*.binlog
 
       TargetFolder: ${{ parameters.artifactsTargetFolder }}
-  
-  - script: build.cmd -Target cg-uwp-build-tests  -ScriptArgs '-BUILD_CONFIGURATION="$(BuildConfiguration)"'
-    condition: and(eq(variables['BuildConfiguration'], 'Release'), ne('${{ parameters.includePages }}', true))
-    displayName: 'Build Tests and APPX'
-
-  - task: CopyFiles@2
-    displayName: 'Copy Appx Packages'
-    condition: and(eq(variables['BuildConfiguration'], 'Release'), ne('${{ parameters.includePages }}', true))
-    inputs:
-      Contents: |
-        Xamarin.Forms.ControlGallery.WindowsUniversal/AppPackages/*/*
-        Xamarin.Forms.ControlGallery.WindowsUniversal/AppPackages/*/Add-AppDevPackage.resources/**
-        Xamarin.Forms.ControlGallery.WindowsUniversal/AppPackages/*/TelemetryDependencies/**
-        Xamarin.Forms.ControlGallery.WindowsUniversal/AppPackages/*/Dependencies/x86/**
-      TargetFolder: '$(build.artifactstagingdirectory)'
-      CleanTargetFolder: false
-      flattenFolders: false
 
   - task: CopyFiles@2
     displayName: 'Copy Cake File'
