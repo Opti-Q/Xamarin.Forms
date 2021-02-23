@@ -10,7 +10,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)CollectionViewGroupTypeIssue.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)Issue11853.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Issue12153.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Issue10324.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Github9536.xaml.cs">
